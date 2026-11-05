@@ -68,7 +68,8 @@ If PhonePad says it can't open `/dev/uinput`, log out and back in once. To remov
 For M1 or later, on macOS 13 or newer. Mac support has been checked on GitHub's Apple silicon machines, but
 **not yet with a real phone on a real Mac**, so please report how it goes.
 
-1. Download `PhonePad-macos-arm64.zip`, unzip it and move **PhonePad** to Applications.
+1. Download [PhonePad-macos-arm64.zip](https://github.com/crash101g/phonepad/releases/download/v0.2.0/PhonePad-macos-arm64.zip)
+   from the v0.2.0 pre-release, unzip it and move **PhonePad** to Applications.
 2. The app isn't notarized by Apple, so macOS blocks the first launch. Try to open it, then go to **System Settings →
    Privacy & Security** and choose **Open Anyway**.
 3. When asked, turn on PhonePad under **Accessibility**, then quit it and open it again.
