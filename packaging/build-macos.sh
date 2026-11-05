@@ -1,10 +1,11 @@
 #!/bin/sh
 # Builds dist/PhonePad-macos-arm64.zip on an Apple silicon Mac.
-# Needs: pip install pyinstaller pyobjc-framework-Cocoa
+# Needs: pip install pyinstaller pyobjc-framework-Cocoa pillow
 set -eu
 cd "$(dirname "$0")/.."
 version=$(sed -n "s/^__version__ = '\(.*\)'/\1/p" phonepad/__init__.py)
 python3 -m PyInstaller --noconfirm --clean --windowed --name PhonePad --target-architecture arm64 \
+  --icon packaging/phonepad.png \
   --osx-bundle-identifier io.github.crash101g.PhonePad \
   --add-data phonepad/phone.html:phonepad --hidden-import phonepad.app_macos --hidden-import phonepad.input_macos \
   packaging/macos_entry.py

@@ -63,6 +63,21 @@ networks often stop devices reaching each other, so use your main network.
 
 If PhonePad says it can't open `/dev/uinput`, log out and back in once. To remove it: `sudo apt remove phonepad`.
 
+### macOS on Apple silicon (experimental)
+
+For M1 or later, on macOS 13 or newer. Mac support has been checked on GitHub's Apple silicon machines, but
+**not yet with a real phone on a real Mac**, so please report how it goes.
+
+1. Download `PhonePad-macos-arm64.zip`, unzip it and move **PhonePad** to Applications.
+2. The app isn't notarized by Apple, so macOS blocks the first launch. Try to open it, then go to **System Settings →
+   Privacy & Security** and choose **Open Anyway**.
+3. When asked, turn on PhonePad under **Accessibility**, then quit it and open it again.
+4. Allow incoming connections if the macOS firewall asks.
+
+On a Mac, the phone's shortcut buttons become their Command versions, **Super** opens Spotlight, and any character
+can be typed, including accents and emoji. The play/pause button is hidden, because a program can't post that key
+the same way. New builds may need the Accessibility setting turned off and on again.
+
 ### Run from source
 
     git clone https://github.com/crash101g/phonepad
@@ -70,7 +85,8 @@ If PhonePad says it can't open `/dev/uinput`, log out and back in once. To remov
     python3 -m phonepad             # or add --terminal for no window
     packaging/build-deb.sh          # builds the .deb in dist/
 
-Needs Python 3.10+, GTK 4 with PyGObject, `iproute2` and write access to `/dev/uinput`.
+On Linux this needs Python 3.10+, GTK 4 with PyGObject, `iproute2` and write access to `/dev/uinput`. On a Mac it
+needs `pip install pyobjc-framework-Cocoa`, and `packaging/build-macos.sh` builds the app.
 
 ## Where it has been tested
 
@@ -79,12 +95,13 @@ Needs Python 3.10+, GTK 4 with PyGObject, `iproute2` and write access to `/dev/u
 | Pop!_OS 24.04, COSMIC (Wayland), with an iPhone | Tested and working |
 | Android | Page tested in emulated Chromium only |
 | GNOME, KDE and X11 | Designed to work, not tested yet |
+| macOS 14 on Apple silicon | Real input checked by automated tests on GitHub's Macs, not yet with a real phone |
 
 If you try one of these, please open an issue and say how it went.
 
 ## Good to know
 
-- **Typing is limited to a US keyboard.** The computer must use a US layout, since keys are sent as physical key
+- **On Linux, typing is limited to a US keyboard.** The computer must use a US layout, since keys are sent as physical key
   presses. Smart quotes and dashes become plain ones. Accented letters and emoji are skipped, and the phone tells
   you how many.
 - **Saved links depend on the computer's address.** If your router gives it a new one, scan again. Reserving the
@@ -95,7 +112,8 @@ If you try one of these, please open an issue and say how it went.
 
 Anyone who can use this link can type on your computer as you, so:
 
-- The code is saved in `~/.config/phonepad/token`, readable only by you. It keeps working until you tap **New
+- The code is saved in `~/.config/phonepad/token` (on a Mac, `~/Library/Application Support/PhonePad/token`),
+  readable only by you. It keeps working until you tap **New
   code**, which replaces it at once. Do that if the link may have leaked, or if you have used it on a network
   you don't trust.
 - It serves only while its window is open, and only one phone at a time.

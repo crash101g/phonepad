@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -c "import platform; print(platform.platform(), platform.machine())"
-      - run: pip install pyinstaller pyobjc-framework-Cocoa
+      - run: pip install pyinstaller pyobjc-framework-Cocoa pillow
       - name: Unit tests
         run: python -m unittest discover tests
       - name: Real CoreGraphics calls
