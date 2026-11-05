@@ -1,0 +1,9 @@
+PhonePad
+========
+
+PhonePad turns the phone remote from TVCouchBrowser for Linux and macOS by crash101g
+(https://github.com/crash101g/tvcouchbrowser-desktop), released under the MIT License (see LICENSE),
+into a stand-alone application that controls the whole desktop. Copyright (c) 2026 crash101g.
+
+phonepad/phone.html is adapted from that project's src/ui/phone.html, including its touch handling.
+Its security design (pairing token, same-subnet check, failure blocking) is carried over too.

@@ -1,0 +1,2 @@
+# Lets the person logged in at this computer create virtual input devices, which PhonePad needs.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

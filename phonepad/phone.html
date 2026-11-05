@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>PhonePad</title>
+<style>
+  :root { color-scheme: dark; --bg:#101318; --card:#1b2230; --accent:#4DA3FF; --text:#e8eef5; --dim:#9fb3c8; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font:17px -apple-system, system-ui, sans-serif; }
+  header { padding:12px 16px 2px; font-weight:700; font-size:18px; display:flex; align-items:center; gap:10px; }
+  #dot { width:10px; height:10px; border-radius:50%; background:#5c6b7d; }
+  #dot.on { background:#3ccf7a; }
+  #dotLabel { font-size:13px; font-weight:400; color:var(--dim); }
+  section { background:var(--card); margin:10px; padding:12px; border-radius:16px; }
+  h2 { margin:0 0 8px; font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  textarea { width:100%; height:48px; resize:none; font:inherit; color:var(--text); background:#0c0f14;
+    border:1px solid #2c3647; border-radius:12px; padding:11px; }
+  .row { display:flex; gap:8px; margin-top:8px; }
+  button { flex:1; font:inherit; font-weight:600; color:var(--text); background:#2a3446; border:0; border-radius:12px;
+    padding:14px 4px; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation; }
+  button.primary { background:var(--accent); color:#06121f; }
+  button:active, button.held { filter:brightness(1.3); }
+  .small button { padding:12px 2px; font-size:15px; }
+  .pad { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; max-width:300px; margin:0 auto; }
+  .pad button { padding:18px 0; font-size:20px; }
+  #track { height:46vh; min-height:220px; border-radius:14px; background:#0c0f14; border:1px solid #2c3647;
+    touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    display:flex; align-items:center; justify-content:center; text-align:center; color:#56657a; font-size:14px;
+    line-height:1.6; padding:16px; }
+  #track.hold { border-color:var(--accent); background:#0f1a28; }
+  #track.drag { border-color:#3ccf7a; background:#0f2218; }
+  #sens { display:flex; align-items:center; gap:10px; margin-top:10px; color:var(--dim); font-size:15px; }
+  #sens input { flex:1; }
+  #status { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#000c; padding:8px 16px;
+    border-radius:20px; opacity:0; transition:opacity .2s; pointer-events:none; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>PhonePad <span id="dot"></span><span id="dotLabel">connecting…</span></header>
+
+<section>
+  <textarea id="text" placeholder="Tap here to type on the computer" autocapitalize="off" autocomplete="off"
+    autocorrect="off" spellcheck="false"></textarea>
+  <div class="row small">
+    <button data-k="enter" class="primary">Enter ⏎</button>
+    <button data-k="backspace">⌫</button>
+    <button data-k="tab">Tab</button>
+    <button data-k="esc">Esc</button>
+  </div>
+</section>
+
+<section>
+  <div id="track">Drag to move · Tap to click<br>Two fingers: scroll · pinch to zoom · tap to right-click<br>
+    Hold still, then drag: press and drag</div>
+  <div class="row small">
+    <button class="primary" data-p="c">Left</button>
+    <button id="hold">Hold</button>
+    <button data-p="M">Middle</button>
+    <button data-p="r">Right</button>
+  </div>
+  <label id="sens">Speed <input type="range" id="speed" min="0.5" max="4" step="0.1" value="1.6"></label>
+</section>
+
+<section>
+  <h2>Shortcuts</h2>
+  <div class="row small">
+    <button data-k="ctrl+c">Copy</button><button data-k="ctrl+v">Paste</button>
+    <button data-k="ctrl+z">Undo</button><button data-k="ctrl+a">All</button>
+  </div>
+  <div class="row small">
+    <button data-k="super">Super</button><button data-k="alt+tab">Alt+Tab</button>
+    <button data-k="alt+left">Back</button><button data-k="f11">F11</button>
+  </div>
+</section>
+
+<section>
+  <h2>Arrows and media</h2>
+  <div class="pad">
+    <button data-k="pageup">PgUp</button><button data-k="up">▲</button><button data-k="pagedown">PgDn</button>
+    <button data-k="left">◀</button><button data-k="down">▼</button><button data-k="right">▶</button>
+    <button data-k="voldown">🔉</button><button data-k="playpause">⏯</button><button data-k="volup">🔊</button>
+  </div>
+</section>
+
+<div id="status"></div>
+
+<script>
+  const token = new URLSearchParams(location.search).get('t') || '';
+  const $ = (id) => document.getElementById(id);
+  let statusTimer;
+  const status = (msg) => {
+    const s = $('status'); s.textContent = msg; s.style.opacity = 1;
+    clearTimeout(statusTimer); statusTimer = setTimeout(() => s.style.opacity = 0, 2200);
+  };
+
+  // Storage can be missing or throw (private browsing); the defaults are fine then.
+  const store = {
+    get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+  };
+
+  // ---- the connection: one WebSocket carrying short commands, in order ----
+  let ws = null; let retry = 1000; let failures = 0; let keepAlive = 0;
+  const setDot = (on, label) => { $('dot').classList.toggle('on', on); $('dotLabel').textContent = label; };
+  const send = (msg) => { if (ws && ws.readyState === 1) ws.send(msg); };
+  const connect = () => {
+    if (ws && ws.readyState <= 1) return;
+    try { ws = new WebSocket('ws://' + location.host + '/ws?t=' + encodeURIComponent(token)); }
+    catch (e) { setDot(false, 'unavailable'); return; }
+    ws.onopen = () => {
+      retry = 1000; failures = 0; setDot(true, 'connected');
+      clearInterval(keepAlive); keepAlive = setInterval(() => send('p'), 10000);
+    };
+    ws.onmessage = (e) => {
+      clearTimeout(probe);
+      if (e.data.startsWith('! ')) status(e.data.slice(2) + ' character(s) can\'t be typed from here');
+    };
+    ws.onclose = () => {
+      clearInterval(keepAlive);
+      failures++;
+      setDot(false, failures > 3 ? 'computer not reachable: is PhonePad open? Scan its QR code again' : 'reconnecting…');
+      if (document.visibilityState === 'visible') setTimeout(connect, retry);
+      retry = Math.min(retry * 2, 8000);
+    };
+  };
+  // iOS suspends a page's connection but can go on reporting it as open, and sends then vanish. So on
+  // coming back, ask the computer for an answer, and replace the connection if none comes.
+  let probe = 0;
+  const drop = () => {
+    clearInterval(keepAlive);
+    if (ws) { ws.onclose = null; try { ws.close(); } catch (e) { /* already gone */ } ws = null; }
+    setDot(false, 'reconnecting…');
+    connect();
+  };
+  const check = () => {
+    retry = 1000;
+    if (!ws || ws.readyState !== 1) return connect();
+    send('p');
+    clearTimeout(probe); probe = setTimeout(drop, 2000);
+  };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) check(); });
+  connect();
+
+  // ---- typing: everything goes straight to the computer as it is typed ----
+  // What was already sent is compared with the box, so autocorrect and swipe typing edit the computer too.
+  // Whole characters, not UTF-16 units, or an emoji would count twice.
+  const MAX_CHUNK = 1500;
+  const typed = (c) => c === '…' ? 3 : /[\x20-\x7e\n\t‘’“”–— ]/.test(c) ? 1 : 0; // keys the computer pressed for c
+  let sent = [];
+  const sync = () => {
+    const now = Array.from($('text').value);
+    let common = 0;
+    while (common < now.length && common < sent.length && now[common] === sent[common]) common++;
+    const back = sent.slice(common).reduce((n, c) => n + typed(c), 0);
+    const added = now.slice(common);
+    sent = now;
+    if (back) send('k backspace ' + back);
+    for (let i = 0; i < added.length; i += MAX_CHUNK) send('t ' + added.slice(i, i + MAX_CHUNK).join(''));
+    // After Enter, start the box afresh: the line it sent is finished.
+    if (now[now.length - 1] === '\n') { $('text').value = ''; sent = []; }
+  };
+  $('text').addEventListener('input', sync);
+  // An empty box has nothing to delete, so no input event comes: the keyboard's delete key must still work.
+  $('text').addEventListener('keydown', (e) => { if (e.key === 'Backspace' && !$('text').value) send('k backspace'); });
+  for (const b of document.querySelectorAll('[data-k]')) {
+    b.onclick = () => {
+      send('k ' + b.dataset.k);
+      if (b.dataset.k === 'enter') { $('text').value = ''; sent = []; }
+      if (b.dataset.k === 'backspace') { const v = Array.from($('text').value); v.pop(); $('text').value = v.join(''); sent = v; }
+    };
+  }
+
+  // ---- trackpad ----
+  let speed = parseFloat(store.get('phonepad-speed', '1.6')) || 1.6;
+  $('speed').value = speed;
+  $('speed').oninput = () => { speed = parseFloat($('speed').value); store.set('phonepad-speed', String(speed)); };
+
+  // Moves and scrolls are added up and sent at most once per frame.
+  let mx = 0, my = 0, sx = 0, sy = 0, frame = 0;
+  const flush = () => {
+    frame = 0;
+    const ix = Math.trunc(mx), iy = Math.trunc(my);
+    if (ix || iy) { send('m ' + ix + ' ' + iy); mx -= ix; my -= iy; }
+    const jx = Math.trunc(sx), jy = Math.trunc(sy);
+    if (jx || jy) { send('s ' + jx + ' ' + jy); sx -= jx; sy -= jy; }
+  };
+  const schedule = () => { if (!frame) frame = requestAnimationFrame(flush); };
+
+  const pad = $('track');
+  const T = { start: null, last: null, moved: false, armed: false, dragging: false, two: false, twoMoved: false,
+    twoStart: 0, twoDist: 0, base: 0, cx: 0, cy: 0, armTimer: 0 };
+  const centroid = (ts) => ({ x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 });
+  const spread = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const setPad = () => { pad.classList.toggle('hold', T.armed && !T.dragging); pad.classList.toggle('drag', T.dragging); };
+
+  pad.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (document.activeElement === $('text')) $('text').blur();
+    const ts = e.touches;
+    if (ts.length === 1 && !T.two) {
+      const t = ts[0];
+      T.start = { x: t.clientX, y: t.clientY, time: performance.now() };
+      T.last = { x: t.clientX, y: t.clientY, time: performance.now() };
+      T.moved = false; T.armed = false;
+      clearTimeout(T.armTimer);
+      // Holding still arms a press: moving then drags, letting go is a right click.
+      T.armTimer = setTimeout(() => { if (!T.moved) { T.armed = true; setPad(); } }, 400);
+    } else if (ts.length === 2) {
+      clearTimeout(T.armTimer);
+      if (T.dragging) { send('u'); T.dragging = false; }
+      T.armed = false; T.two = true; T.twoMoved = false; T.twoDist = 0; T.twoStart = performance.now();
+      const c = centroid(ts); T.cx = c.x; T.cy = c.y; T.base = spread(ts);
+      setPad();
+    }
+  }, { passive: false });
+
+  pad.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const ts = e.touches;
+    if (T.two) {
+      if (ts.length < 2) return;
+      const c = centroid(ts);
+      const dx = c.x - T.cx, dy = c.y - T.cy;
+      T.cx = c.x; T.cy = c.y;
+      const d = spread(ts);
+      const ratio = T.base ? d / T.base : 1;
+      if (ratio > 1.3 || ratio < 0.77) { send('z ' + (ratio > 1 ? 1 : -1)); T.base = d; T.twoMoved = true; return; }
+      // Content follows the fingers, as on the phone itself.
+      sx -= dx; sy -= dy; schedule();
+      T.twoDist += Math.abs(dx) + Math.abs(dy);
+      if (T.twoDist > 10) T.twoMoved = true;
+      return;
+    }
+    if (ts.length !== 1 || !T.last) return;
+    const t = ts[0];
+    const now = performance.now();
+    const dx = t.clientX - T.last.x, dy = t.clientY - T.last.y;
+    const dt = Math.max(now - T.last.time, 1);
+    T.last = { x: t.clientX, y: t.clientY, time: now };
+    if (!T.moved && Math.hypot(t.clientX - T.start.x, t.clientY - T.start.y) > 8) {
+      T.moved = true; clearTimeout(T.armTimer);
+      if (T.armed && !T.dragging) { T.dragging = true; send('d'); setPad(); }
+    }
+    if (!T.moved) return;
+    // Pointer acceleration: slow moves are precise, fast flicks cross the screen.
+    const v = Math.hypot(dx, dy) / dt; // px per ms
+    const gain = speed * (1 + Math.min(Math.max(v - 0.25, 0) * 2.2, 3.5));
+    mx += dx * gain; my += dy * gain; schedule();
+  }, { passive: false });
+
+  const touchEnd = (e) => {
+    e.preventDefault();
+    if (e.touches.length > 0) return;
+    clearTimeout(T.armTimer);
+    if (T.two) {
+      if (!T.twoMoved && performance.now() - T.twoStart < 350) send('r');
+      T.two = false;
+    } else if (T.dragging) {
+      flush(); send('u');
+    } else if (T.start) {
+      const quick = performance.now() - T.start.time < 300;
+      if (T.armed && !T.moved) send('r');
+      else if (!T.moved && quick) send('c');
+    }
+    T.dragging = false; T.armed = false; T.start = null; T.last = null;
+    setPad();
+  };
+  pad.addEventListener('touchend', touchEnd, { passive: false });
+  pad.addEventListener('touchcancel', touchEnd, { passive: false });
+
+  for (const b of document.querySelectorAll('[data-p]')) b.onclick = () => send(b.dataset.p);
+  // Hold: the left button stays down for as long as the finger stays on this button.
+  const hold = $('hold');
+  const holdDown = (e) => { e.preventDefault(); hold.classList.add('held'); send('d'); };
+  const holdUp = (e) => { e.preventDefault(); if (hold.classList.contains('held')) { hold.classList.remove('held'); send('u'); } };
+  hold.addEventListener('touchstart', holdDown, { passive: false });
+  hold.addEventListener('touchend', holdUp, { passive: false });
+  hold.addEventListener('touchcancel', holdUp, { passive: false });
+  hold.addEventListener('mousedown', holdDown);
+  hold.addEventListener('mouseup', holdUp);
+</script>
+</body>
+</html>

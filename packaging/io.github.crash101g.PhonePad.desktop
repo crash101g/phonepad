@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PhonePad
+Comment=Use your phone as a wireless keyboard and mouse
+Exec=phonepad
+Icon=phonepad
+Terminal=false
+Categories=Utility;
+Keywords=phone;remote;keyboard;mouse;trackpad;QR;
+StartupWMClass=io.github.crash101g.PhonePad
