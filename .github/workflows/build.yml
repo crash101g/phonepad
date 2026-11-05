@@ -29,8 +29,12 @@ jobs:
         run: python -m unittest discover tests
       - name: Real CoreGraphics calls
         run: PYTHONPATH=. python tests/mac_smoke.py
+      - name: Real input delivered to a real window
+        timeout-minutes: 2
+        run: PYTHONPATH=. python tests/mac_e2e.py e2e.png
       - name: Window from source
-        run: PYTHONPATH=. timeout 30 python tests/mac_window_demo.py window-source.png
+        timeout-minutes: 1
+        run: PYTHONPATH=. python tests/mac_window_demo.py window-source.png
       - name: Build the app
         run: packaging/build-macos.sh
       - name: Run the built app
