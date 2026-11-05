@@ -34,6 +34,7 @@
   #track.drag { border-color:#3ccf7a; background:#0f2218; }
   #sens { display:flex; align-items:center; gap:10px; margin-top:10px; color:var(--dim); font-size:15px; }
   #sens input { flex:1; }
+  .mac .linux-only { visibility:hidden; }
   #status { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#000c; padding:8px 16px;
     border-radius:20px; opacity:0; transition:opacity .2s; pointer-events:none; white-space:nowrap; }
 </style>
@@ -81,7 +82,7 @@
   <div class="pad">
     <button data-k="pageup">PgUp</button><button data-k="up">▲</button><button data-k="pagedown">PgDn</button>
     <button data-k="left">◀</button><button data-k="down">▼</button><button data-k="right">▶</button>
-    <button data-k="voldown">🔉</button><button data-k="playpause">⏯</button><button data-k="volup">🔊</button>
+    <button data-k="voldown">🔉</button><button data-k="playpause" class="linux-only">⏯</button><button data-k="volup">🔊</button>
   </div>
 </section>
 
@@ -149,7 +150,9 @@
   // What was already sent is compared with the box, so autocorrect and swipe typing edit the computer too.
   // Whole characters, not UTF-16 units, or an emoji would count twice.
   const MAX_CHUNK = 1500;
-  const typed = (c) => c === '…' ? 3 : /[\x20-\x7e\n\t‘’“”–— ]/.test(c) ? 1 : 0; // keys the computer pressed for c
+  // Characters the computer received for c. A Mac takes every character as it is.
+  const mac = document.body.classList.contains('mac');
+  const typed = (c) => mac ? 1 : c === '…' ? 3 : /[\x20-\x7e\n\t‘’“”–— ]/.test(c) ? 1 : 0;
   let sent = [];
   const sync = () => {
     const now = Array.from($('text').value);

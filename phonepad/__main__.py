@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from . import __version__
+from phonepad import __version__
 
 
 def main():
@@ -10,10 +10,14 @@ def main():
     parser.add_argument('--version', action='version', version=__version__)
     args = parser.parse_args()
     if args.terminal:
-        from .service import run_in_terminal
+        from phonepad.service import run_in_terminal
         return run_in_terminal()
-    from .app import run
+    if sys.platform == 'darwin':
+        from phonepad.app_macos import run
+    else:
+        from phonepad.app import run
     return run()
 
 
-sys.exit(main())
+if __name__ == '__main__':
+    sys.exit(main())

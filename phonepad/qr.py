@@ -2,6 +2,8 @@
 
 That covers the pairing link, and it means this application needs no QR library.
 """
+import struct
+import zlib
 
 # version -> (data codewords, error correction codewords). All are a single block.
 VERSIONS = {1: (19, 7), 2: (34, 10), 3: (55, 15), 4: (80, 20), 5: (108, 26)}
@@ -179,6 +181,19 @@ def to_terminal(matrix):
     dark = lambda x, y: border <= x < size - border and border <= y < size - border and matrix[y - border][x - border]
     glyph = {(0, 0): '█', (0, 1): '▀', (1, 0): '▄', (1, 1): ' '}
     return '\n'.join(''.join(glyph[dark(x, y), dark(x, y + 1)] for x in range(size)) for y in range(0, size, 2))
+
+
+def to_png(matrix, scale=8, border=4):
+    """The code as PNG file bytes."""
+    pixels, width = to_rgba(matrix, scale, border)
+    stride = width * 4
+    raw = b''.join(b'\0' + pixels[i:i + stride] for i in range(0, len(pixels), stride))
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+    header = struct.pack('>IIBBBBB', width, width, 8, 6, 0, 0, 0)  # 8 bits, RGBA
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
 
 
 def to_rgba(matrix, scale=8, border=4):

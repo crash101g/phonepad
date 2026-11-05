@@ -3,6 +3,7 @@ import asyncio
 import os
 import re
 import secrets
+import sys
 import tempfile
 import threading
 
@@ -14,10 +15,15 @@ from .server import PhoneServer
 NO_ACCESS = ('PhonePad can\'t open /dev/uinput, which it needs to act as a keyboard and mouse.\n\n'
              'Installing the PhonePad package fixes this (log out and back in afterwards). When running from\n'
              'the source folder, install packaging/60-phonepad-uinput.rules into /etc/udev/rules.d/.')
+MAC = sys.platform == 'darwin'
+NO_ACCESS_MAC = ('PhonePad needs permission to control this Mac.\n\nIn System Settings, open Privacy & Security, then '
+                 'Accessibility, and turn on PhonePad. Then quit PhonePad and open it again.')
 NO_NETWORK = 'This computer isn\'t connected to a local network. Join your Wi-Fi, then try again.'
 
 
 def token_path():
+    if MAC:
+        return os.path.expanduser('~/Library/Application Support/PhonePad/token')
     config = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
     return os.path.join(config, 'phonepad', 'token')
 
@@ -65,12 +71,16 @@ class Service:
         iface = lan_interface()
         if iface is None:
             raise StartError(NO_NETWORK)
+        shortcuts = None
+        if MAC:
+            from . import input_macos
+            shortcuts = input_macos.SHORTCUTS
         try:
-            self.controller = uinput.Controller(*uinput.open_devices())
+            self.controller = uinput.Controller(*uinput.open_devices(), shortcuts)
         except OSError as e:
-            raise StartError(NO_ACCESS) from e
+            raise StartError(NO_ACCESS_MAC if MAC else NO_ACCESS) from e
         token = new_token(token_path()) if new_code else load_token(token_path())
-        self.server = PhoneServer(self.controller, iface, self.on_status, token=token)
+        self.server = PhoneServer(self.controller, iface, self.on_status, token=token, mac=MAC)
         self.loop = asyncio.new_event_loop()
         try:
             self.loop.run_until_complete(self.server.start())

@@ -85,9 +85,10 @@ class RateLimit:
 class PhoneServer:
     """Serves one phone at a time. A newer valid connection takes over, so a phone that slept can reconnect."""
 
-    def __init__(self, controller, iface, on_status=lambda text: None, token=None, ports=PORTS, allow_peer=None):
+    def __init__(self, controller, iface, on_status=lambda text: None, token=None, ports=PORTS, allow_peer=None, mac=False):
         self.controller = controller
         self.iface = iface
+        self.mac = mac
         self.host = str(iface.ip)
         self.on_status = on_status
         self.token = token or secrets.token_hex(16)
@@ -161,7 +162,10 @@ class PhoneServer:
             return await self.reply(writer, 400, 'text/plain', b'Bad host')
         if method == 'GET' and url.path == '/':
             with open(PHONE_PAGE, 'rb') as page:
-                return await self.reply(writer, 200, 'text/html; charset=utf-8', page.read())
+                body = page.read()
+            if self.mac:
+                body = body.replace(b'<body>', b'<body class="mac">')
+            return await self.reply(writer, 200, 'text/html; charset=utf-8', body)
         if method == 'GET' and url.path == '/ws':
             return await self.websocket(reader, writer, ip, headers)
         return await self.reply(writer, 404, 'text/plain', b'Not found')

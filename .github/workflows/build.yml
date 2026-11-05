@@ -1,0 +1,51 @@
+name: Build and test
+
+on:
+  push:
+    branches: [macos-support]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover tests
+      - run: packaging/build-deb.sh
+
+  macos:
+    runs-on: macos-14   # Apple silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -c "import platform; print(platform.platform(), platform.machine())"
+      - run: pip install pyinstaller pyobjc-framework-Cocoa
+      - name: Unit tests
+        run: python -m unittest discover tests
+      - name: Real CoreGraphics calls
+        run: PYTHONPATH=. python tests/mac_smoke.py
+      - name: Window from source
+        run: PYTHONPATH=. timeout 30 python tests/mac_window_demo.py window-source.png
+      - name: Build the app
+        run: packaging/build-macos.sh
+      - name: Run the built app
+        run: |
+          dist/PhonePad.app/Contents/MacOS/PhonePad --version
+          codesign --verify --verbose=2 dist/PhonePad.app
+          open dist/PhonePad.app
+          sleep 8
+          pgrep -lf PhonePad
+          screencapture -x app-running.png
+          osascript -e 'tell application "PhonePad" to quit' || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PhonePad-macos-arm64
+          path: |
+            dist/PhonePad-macos-arm64.zip
+            *.png

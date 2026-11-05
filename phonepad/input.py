@@ -1,12 +1,18 @@
-"""Virtual keyboard and mouse, through the kernel's /dev/uinput.
+"""Virtual keyboard and mouse. Linux codes are the common language; input_macos.py translates them.
 
-This sits below the display server, so it works on Wayland (COSMIC, GNOME, KDE) and X11 alike, and
-needs no compositor support. Keys are physical key codes, so the text tables assume a US layout.
+On Linux this uses the kernel's /dev/uinput. That sits below the display server, so it works on Wayland
+(COSMIC, GNOME, KDE) and X11 alike, and needs no compositor support. Keys are physical key codes, so the
+text tables assume a US layout.
 """
 import asyncio
-import fcntl
 import os
 import struct
+import sys
+
+try:
+    import fcntl
+except ImportError:  # not on every platform; only Device needs it
+    fcntl = None
 
 UINPUT = '/dev/uinput'
 UI_SET_EVBIT = 0x40045564
@@ -116,7 +122,10 @@ class Device:
 
 
 def open_devices():
-    """The real keyboard and mouse. Raises OSError if /dev/uinput can't be opened."""
+    """The real keyboard and mouse. Raises OSError if they can't be opened."""
+    if sys.platform == 'darwin':
+        from . import input_macos
+        return input_macos.open_devices()
     keyboard = Device('PhonePad Keyboard', keys=KEYBOARD_KEYS)
     try:
         return keyboard, Device('PhonePad Mouse', keys=MOUSE_BUTTONS, axes=MOUSE_AXES)
@@ -128,9 +137,10 @@ def open_devices():
 class Controller:
     """Turns phone commands into input events. Remembers what is held, so nothing can stay stuck down."""
 
-    def __init__(self, keyboard, mouse):
+    def __init__(self, keyboard, mouse, shortcuts=None):
         self.keyboard = keyboard
         self.mouse = mouse
+        self.shortcuts = shortcuts or {}  # what the page's shortcut names mean on this platform
         self.held_keys = set()
         self.held_buttons = set()
         self.wheel = [0, 0]  # x, y: high-resolution units not yet a whole notch
@@ -181,7 +191,7 @@ class Controller:
 
     async def combo(self, combo, repeat=1):
         """Presses a key or shortcut. False if the name is unknown."""
-        parsed = parse_combo(combo)
+        parsed = parse_combo(self.shortcuts.get(combo, combo))
         if parsed is None:
             return False
         for _ in range(max(1, min(repeat, MAX_REPEAT))):
@@ -190,6 +200,10 @@ class Controller:
 
     async def zoom(self, direction):
         """Ctrl + wheel, which browsers and most document viewers treat as zoom."""
+        name = 'zoom-in' if direction > 0 else 'zoom-out'
+        if name in self.shortcuts:
+            await self.combo(self.shortcuts[name])
+            return
         self._key(KEY_LEFTCTRL, True)
         try:
             await asyncio.sleep(KEY_GAP)
@@ -201,7 +215,12 @@ class Controller:
     async def type_text(self, text):
         """Types [text]. Returns how many characters can't be typed and were skipped."""
         skipped = 0
+        direct = getattr(self.keyboard, 'type_char', None)  # macOS can type any character
         for char in text:
+            if direct and char not in '\n\t':
+                direct(char)
+                await asyncio.sleep(KEY_GAP)
+                continue
             for plain in SUBSTITUTES.get(char, char):
                 entry = CHARS.get(plain)
                 if entry is None:

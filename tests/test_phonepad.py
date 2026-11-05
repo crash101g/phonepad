@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from phonepad import input as uinput
+from phonepad import input_macos
 from phonepad import network, qr, server, service
 
 
@@ -104,6 +105,11 @@ class Network(unittest.TestCase):
 
 
 class QR(unittest.TestCase):
+    def test_png_is_well_formed(self):
+        png = qr.to_png(qr.encode('hi'), scale=2)
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        self.assertTrue(png.endswith(b'IEND\xaeB`\x82'))
+
     def test_sizes_and_limit(self):
         self.assertEqual(len(qr.encode('a' * 17)), 21)
         self.assertEqual(len(qr.encode('a' * 106)), 37)
@@ -279,6 +285,133 @@ class Server(unittest.IsolatedAsyncioTestCase):
         except ConnectionResetError:
             response = b''
         self.assertEqual(response, b'')
+
+
+class FakeQuartz:
+    """Stands in for CoreGraphics, so the Mac translation is tested on every platform."""
+
+    def __init__(self):
+        self.calls = []
+        self.at = (100.0, 100.0)
+        self.screens = [(0, 0, 1000, 800)]
+
+    def location(self):
+        return self.at
+
+    def displays(self):
+        return self.screens
+
+    def mouse(self, kind, x, y, button, click_state=None):
+        self.at = (x, y)
+        self.calls.append(('mouse', kind, x, y, button, click_state))
+
+    def scroll(self, vertical, horizontal):
+        self.calls.append(('scroll', vertical, horizontal))
+
+    def key(self, code, down, flags):
+        self.calls.append(('key', code, down, flags))
+
+    def text(self, char):
+        self.calls.append(('text', char))
+
+
+def mac_controller():
+    quartz, scripts = FakeQuartz(), []
+    keyboard = input_macos.Keyboard(quartz, scripts.append)
+    ctl = uinput.Controller(keyboard, input_macos.Mouse(quartz), input_macos.SHORTCUTS)
+    return ctl, quartz, scripts
+
+
+class Mac(unittest.TestCase):
+    def test_every_key_is_mapped_except_the_ones_macos_can_not_post(self):
+        for code in uinput.KEYBOARD_KEYS:
+            if code not in input_macos.KEYMAP and code not in input_macos.SCRIPTS:
+                self.assertIn(code, (uinput.NAMED['next'], uinput.NAMED['playpause'], uinput.NAMED['prev']), code)
+
+    def test_copy_becomes_command_c_with_the_flag_on_the_key(self):
+        ctl, quartz, _ = mac_controller()
+        asyncio.run(ctl.combo('ctrl+c'))
+        self.assertEqual(quartz.calls, [
+            ('key', 55, True, 0x100000), ('key', 8, True, 0x100000), ('key', 8, False, 0x100000), ('key', 55, False, 0)])
+
+    def test_any_character_can_be_typed_and_newline_is_return(self):
+        ctl, quartz, _ = mac_controller()
+        self.assertEqual(asyncio.run(ctl.type_text('é😀\n')), 0)
+        self.assertEqual(quartz.calls[:2], [('text', 'é'), ('text', '😀')])
+        self.assertEqual(quartz.calls[2:], [('key', 36, True, 0), ('key', 36, False, 0)])
+
+    def test_moves_stay_on_screen(self):
+        ctl, quartz, _ = mac_controller()
+        ctl.move(5, -3)
+        self.assertEqual(quartz.calls[-1], ('mouse', input_macos.MOUSE_MOVED, 105.0, 97.0, 0, None))
+        ctl.move(-2000, 2000)
+        self.assertEqual(quartz.at, (0, 799))
+
+    def test_a_second_screen_is_reachable(self):
+        ctl, quartz, _ = mac_controller()
+        quartz.screens.append((1000, 0, 2000, 800))
+        ctl.move(1500, 0)
+        self.assertEqual(quartz.at, (1600.0, 100.0))
+
+    def test_moving_with_the_button_held_drags(self):
+        ctl, quartz, _ = mac_controller()
+        ctl.button(uinput.BTN_LEFT, True)
+        ctl.move(1, 1)
+        ctl.button(uinput.BTN_LEFT, False)
+        ctl.move(1, 1)
+        self.assertEqual([c[1] for c in quartz.calls], [1, 6, 2, input_macos.MOUSE_MOVED])
+
+    def test_two_quick_clicks_are_a_double_click(self):
+        ctl, quartz, _ = mac_controller()
+        ctl.click()
+        ctl.click()
+        self.assertEqual([c[5] for c in quartz.calls], [1, 1, 2, 2])
+
+    def test_scrolling_down_and_right(self):
+        ctl, quartz, _ = mac_controller()
+        ctl.scroll(10, 20)
+        self.assertEqual(quartz.calls, [('scroll', -20, -10)])
+
+    def test_zoom_uses_command_keys(self):
+        ctl, quartz, _ = mac_controller()
+        asyncio.run(ctl.zoom(1))
+        self.assertIn(('key', 24, True, 0x100000), quartz.calls)
+
+    def test_volume_runs_a_script_once(self):
+        ctl, quartz, scripts = mac_controller()
+        asyncio.run(ctl.combo('volup'))
+        self.assertEqual(len(scripts), 1)
+        self.assertEqual(quartz.calls, [])
+
+
+class MacNetwork(unittest.TestCase):
+    IFCONFIG = """lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+\tinet 127.0.0.1 netmask 0xff000000
+bridge100: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+\tinet 192.168.64.1 netmask 0xffffff00 broadcast 192.168.64.255
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+\tinet6 fe80::1%en0 prefixlen 64 scopeid 0xb
+\tinet 192.168.1.60 netmask 0xffffff00 broadcast 192.168.1.255
+utun3: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380
+\tinet 10.8.0.2 netmask 0xffffff00
+"""
+
+    def test_picks_wifi_over_virtual_interfaces(self):
+        route = '   route to: default\n  gateway: 192.168.1.1\n  interface: en0\n'
+        chosen = network.pick_interface(network.parse_ifconfig(self.IFCONFIG), network.parse_default_route(route))
+        self.assertEqual(str(chosen), '192.168.1.60/24')
+
+
+class MacPage(unittest.IsolatedAsyncioTestCase):
+    async def test_the_page_is_told_it_is_on_a_mac(self):
+        srv = server.PhoneServer(controller(), ipaddress.ip_interface('127.0.0.1/8'), token=TOKEN, ports=(0,),
+                                 allow_peer=lambda peer: True, mac=True)
+        await srv.start()
+        reader, writer = await asyncio.open_connection('127.0.0.1', srv.port)
+        writer.write(f'GET /?t={TOKEN} HTTP/1.1\r\nHost: 127.0.0.1:{srv.port}\r\n\r\n'.encode())
+        self.assertIn(b'<body class="mac">', await reader.read())
+        writer.close()
+        await srv.stop()
 
 
 if __name__ == '__main__':

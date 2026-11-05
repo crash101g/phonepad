@@ -1,9 +1,12 @@
 """Finds the address a phone should use, and decides who may connect."""
 import ipaddress
 import json
+import re
 import subprocess
+import sys
 
-_VIRTUAL = ('lo', 'docker', 'br-', 'veth', 'virbr', 'tun', 'tap', 'wg', 'tailscale', 'vnet')
+_VIRTUAL = ('lo', 'docker', 'br-', 'veth', 'virbr', 'tun', 'tap', 'wg', 'tailscale', 'vnet',
+            'utun', 'awdl', 'llw', 'bridge', 'anpi', 'gif', 'stf', 'ap')
 
 
 def _ip_json(*args):
@@ -29,8 +32,36 @@ def pick_interface(addresses, default_dev=None):
     return found[0][1] if found else None
 
 
+def parse_ifconfig(text):
+    """macOS `ifconfig` output, in the same form as `ip -j -4 addr`."""
+    links = []
+    for line in text.splitlines():
+        header = re.match(r'(\S+): flags=\w+<([^>]*)>', line)
+        inet = re.match(r'\s+inet (\S+) netmask 0x([0-9a-f]+)', line)
+        if header:
+            links.append({'ifname': header[1], 'operstate': 'UP' if 'UP' in header[2].split(',') else 'DOWN', 'addr_info': []})
+        elif inet and links:
+            links[-1]['addr_info'].append({'local': inet[1], 'prefixlen': bin(int(inet[2], 16)).count('1')})
+    return links
+
+
+def parse_default_route(text):
+    """The interface in macOS `route -n get default` output, or None."""
+    match = re.search(r'^\s*interface: (\S+)', text, re.M)
+    return match[1] if match else None
+
+
+def _run(*command):
+    return subprocess.run(command, capture_output=True, text=True, timeout=3).stdout
+
+
 def lan_interface():
     """This computer's address on the local network, or None when it isn't on one."""
+    if sys.platform == 'darwin':
+        try:
+            return pick_interface(parse_ifconfig(_run('/sbin/ifconfig')), parse_default_route(_run('/sbin/route', '-n', 'get', 'default')))
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
     try:
         addresses = _ip_json('-4', 'addr')
     except (OSError, ValueError, subprocess.SubprocessError):
