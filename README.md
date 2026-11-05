@@ -1,4 +1,4 @@
-# PhonePad for Linux
+# PhonePad for Linux with Experimental port to macOS on Apple silicon 
 
 **Your phone is your keyboard and mouse.** Scan a QR code and control your Linux desktop from the couch, the bed
 or across the room. No phone app, no account, no cloud.
