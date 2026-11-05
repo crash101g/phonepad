@@ -1,14 +1,14 @@
 """Checks the real CoreGraphics calls on a Mac. Run with: python3 tests/mac_smoke.py
 
 Events are built and read back without being posted, because that needs no permission. The final part
-posts a tiny pointer move and only reports what happened, since a test machine may not allow it.
+posts a tiny pointer move and only reports what happened, since a test machine may not allow it. Clicks and
+keys are left to mac_e2e.py: here they would land on whatever is on screen, such as the Apple menu.
 """
-import asyncio
 import platform
 import sys
 import time
 
-from phonepad import input as ui, input_macos as mac, network, service
+from phonepad import input_macos as mac, network, service
 
 assert sys.platform == 'darwin' and platform.machine() == 'arm64', platform.platform()
 print('platform', platform.platform())
@@ -34,8 +34,6 @@ assert cg.CGEventGetIntegerValueField(event, mac.FIELD_CLICK_STATE) == 2
 q.release(event)
 
 assert cg.CGEventCreateScrollWheelEvent2(q.source, mac.UNITS_PIXEL, 2, -30, 10, 0)
-for char in 'aé😀':
-    q.text(char)  # posting without permission is ignored, but must not crash
 print('event building ok')
 
 print('displays', q.displays())
@@ -49,18 +47,11 @@ print('accessibility allowed:', allowed)
 iface = network.lan_interface()
 print('network interface:', iface)
 
-keyboard, mouse = mac.Keyboard(q), mac.Mouse(q)
-ctl = ui.Controller(keyboard, mouse, mac.SHORTCUTS)
+mouse = mac.Mouse(q)
 before = q.location()
-ctl.move(3, 3)
+mouse.move(3, 3)
 time.sleep(.3)
 print('real post moved pointer:', before, '->', q.location())
-ctl.scroll(0, 5)
-ctl.click()
-asyncio.run(ctl.combo('ctrl+a'))
-asyncio.run(ctl.type_text('é😀a\n'))
-ctl.release_all()
-print('real controller calls did not crash')
 
 svc = service.Service(print)
 try:

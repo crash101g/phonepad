@@ -1,7 +1,7 @@
 """The Mac window: the QR code, the connection status and a way to change the code. Needs PyObjC."""
 import objc
 from AppKit import (NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSBackingStoreBuffered, NSBezelStyleRounded,
-                    NSButton, NSImage, NSImageScaleProportionallyUpOrDown, NSImageView, NSMakeRect, NSObject,
+                    NSButton, NSImage, NSImageScaleProportionallyUpOrDown, NSImageView, NSMakeRect, NSMenu, NSMenuItem, NSObject,
                     NSTextAlignmentCenter, NSTextField, NSWindow, NSWindowStyleMaskClosable, NSWindowStyleMaskMiniaturizable,
                     NSWindowStyleMaskTitled)
 from Foundation import NSData
@@ -87,9 +87,21 @@ class Delegate(NSObject):
         self.stop()
 
 
+def main_menu():
+    """The application menu. Without one, Command+Q does nothing."""
+    bar = NSMenu.alloc().init()
+    holder = NSMenuItem.alloc().init()
+    bar.addItem_(holder)
+    menu = NSMenu.alloc().initWithTitle_('PhonePad')
+    menu.addItemWithTitle_action_keyEquivalent_('Quit PhonePad', 'terminate:', 'q')
+    holder.setSubmenu_(menu)
+    return bar
+
+
 def run():
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+    app.setMainMenu_(main_menu())
     delegate = Delegate.alloc().init()
     app.setDelegate_(delegate)
     AppHelper.runEventLoop()

@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 
-from AppKit import (NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSBackingStoreBuffered, NSEvent,
+from AppKit import (NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSBackingStoreBuffered, NSEvent, NSMenu, NSMenuItem,
                     NSEventModifierFlagCommand, NSEventTypeKeyDown, NSEventTypeLeftMouseDown, NSEventTypeLeftMouseDragged,
                     NSEventTypeLeftMouseUp, NSEventTypeRightMouseDown, NSEventTypeScrollWheel, NSMakeRect, NSScreen,
                     NSTextField, NSWindow, NSWindowStyleMaskTitled)
@@ -68,12 +68,14 @@ def scenario(window, field, ctl, q):
         time.sleep(.3)
         text = on_main(lambda: str(field.stringValue()))
         check('shortcut selects all, typing replaces', text == 'x', repr(text))
-        command = [e for e in events(NSEventTypeKeyDown) if e.modifierFlags() & NSEventModifierFlagCommand]
-        check('Command flag reached the app', bool(command) or text == 'x', f'{len(command)} seen')
+        keys = events(NSEventTypeKeyDown)
+        check('Command flag reached the app', any(e.modifierFlags() & NSEventModifierFlagCommand for e in keys))
+        check('Command flag did not stick', not keys[-1].modifierFlags() & NSEventModifierFlagCommand)
 
         await ctl.combo('backspace')
         time.sleep(.3)
         check('backspace', on_main(lambda: str(field.stringValue())) == '')
+        check('nothing left held', not ctl.held_keys and not ctl.keyboard.flags)
 
         seen.clear()
         ctl.click()
@@ -116,6 +118,14 @@ def main():
     ctl = ui.Controller(mac.Keyboard(q), mac.Mouse(q), mac.SHORTCUTS)
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+    # Command shortcuts reach a text field through the menu, as in any Mac app.
+    menu = NSMenu.alloc().init()
+    holder = NSMenuItem.alloc().init()
+    menu.addItem_(holder)
+    edit = NSMenu.alloc().initWithTitle_('Edit')
+    edit.addItemWithTitle_action_keyEquivalent_('Select All', 'selectAll:', 'a')
+    holder.setSubmenu_(edit)
+    app.setMainMenu_(menu)
     window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(300, 300, 600, 300), NSWindowStyleMaskTitled, NSBackingStoreBuffered, False)
     window.setTitle_('PhonePad end-to-end test')
